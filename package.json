@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:rbac": "tsx scripts/test-rbac-e2e.ts",
+    "test:onboarding": "tsx scripts/test-onboarding-e2e.ts",
+    "test:rls": "tsx scripts/test-rls-e2e.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import testRoutes from "./routes/test.routes.js";
+import organizationRoutes from "./routes/organization.routes.js";
+import membershipRoutes from "./routes/membership.routes.js";
 
 const app = express();
 
@@ -14,7 +16,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, etc.)
+      // Allow requests with no origin (like mobile apps, curl, postman, tests)
       if (!origin) return callback(null, true);
       if (
         allowedOrigins.includes(origin) ||
@@ -34,15 +36,23 @@ app.use(
 
 app.use(express.json());
 
-import organizationRoutes from "./routes/organization.routes.js";
-
-app.use("/api/organizations", organizationRoutes);
+// Routes
 app.use("/api/test", testRoutes);
+app.use("/api/memberships", membershipRoutes);
+app.use("/api/organizations", organizationRoutes);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
     success: true,
     message: "Motovu backend is running",
+  });
+});
+
+// Global 404 handler for API routes
+app.use((_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "API endpoint not found",
   });
 });
 
