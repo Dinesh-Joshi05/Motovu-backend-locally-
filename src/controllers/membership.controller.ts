@@ -7,7 +7,7 @@ export async function getMyMemberships(
 ) {
     try {
         // We'll populate this from verified Better Auth identity
-        const userId = req.user.id;
+        const userId = res.locals.user.id as string;
 
         const memberships = await getUserMemberships(userId);
 

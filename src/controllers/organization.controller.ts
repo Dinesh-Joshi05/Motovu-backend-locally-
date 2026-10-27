@@ -6,7 +6,14 @@ export async function getOrganization(
     res: Response
 ) {
     try {
-        const { orgId } = req.params;
+        const orgId = req.params.orgId;
+
+        if (typeof orgId !== "string") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid organization ID",
+            });
+        }
 
         const organization = await getOrganizationById(orgId);
 

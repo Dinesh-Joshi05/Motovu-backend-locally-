@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import testRoutes from "./routes/test.routes.js";
+
 const app = express();
 
 app.use(cors({
@@ -13,6 +15,8 @@ app.use(express.json());
 import organizationRoutes from "./routes/organization.routes.js";
 
 app.use("/api/organizations", organizationRoutes);
+app.use("/api/test", testRoutes);
+
 
 app.get("/health", (_req, res) => {
     res.status(200).json({
