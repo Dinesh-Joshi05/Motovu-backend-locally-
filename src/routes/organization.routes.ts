@@ -3,6 +3,7 @@ import { authenticate } from "../middlewares/auth.middleware.js";
 import { requireMembership } from "../middlewares/tenant.middleware.js";
 import { requireOrgAdmin } from "../middlewares/rbac.middleware.js";
 import * as org from "../controllers/organization.controller.js";
+import chatRoutes from "./chat.routes.js";
 
 const router = Router();
 
@@ -24,5 +25,8 @@ router.delete("/:orgId/members/:memberId", requireMembership, requireOrgAdmin, o
 router.post("/:orgId/role-requests", org.createRoleRequest);
 router.get("/:orgId/role-requests", requireMembership, requireOrgAdmin, org.listRoleRequests);
 router.patch("/:orgId/role-requests/:requestId", requireMembership, requireOrgAdmin, org.reviewRoleRequest);
+
+// Chat
+router.use("/:orgId/chat", chatRoutes);
 
 export default router;

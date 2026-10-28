@@ -137,6 +137,17 @@ export async function reviewRoleRequest(
 
     let membership = null;
     if (action === "approved") {
+      // Automatically create company chat conversation for the organization if not already created (e.g. Option A)
+      const convResult = await client.query(
+        `INSERT INTO app.conversations (id, org_id, name)
+         VALUES (gen_random_uuid(), $1, 'Company Chat')
+         ON CONFLICT (org_id) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [orgId]
+      );
+      const conversationId = convResult.rows[0]?.id;
+
+      // Activate user membership in the organization
       const memResult = await client.query(
         `INSERT INTO app.memberships (id, org_id, user_id, role, status)
          VALUES (gen_random_uuid(), $1, $2, $3, 'active')
@@ -146,6 +157,17 @@ export async function reviewRoleRequest(
         [orgId, roleReq.user_id, roleReq.requested_role]
       );
       membership = memResult.rows[0];
+
+      // Automatically add user to organization chat room
+      if (conversationId && membership?.id) {
+        await client.query(
+          `INSERT INTO app.conversation_members (org_id, conversation_id, membership_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (conversation_id, membership_id)
+           DO UPDATE SET joined_at = NOW()`,
+          [orgId, conversationId, membership.id]
+        );
+      }
     }
 
     await client.query("COMMIT");
