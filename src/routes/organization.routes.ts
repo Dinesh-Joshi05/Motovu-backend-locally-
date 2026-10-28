@@ -9,6 +9,9 @@ const router = Router();
 
 router.use(authenticate);
 
+// Platform Admin: list all organizations with their members
+router.get("/all-with-members", org.listAllOrganizationsWithMembers);
+
 // Organizations
 router.get("/", org.listOrganizations);
 router.post("/", org.createOrganization);

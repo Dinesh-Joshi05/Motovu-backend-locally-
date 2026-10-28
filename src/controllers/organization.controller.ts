@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   createOrganization as createOrgService,
   getAllOrganizations,
+  getAllOrganizationsWithMembers,
   getOrganizationById,
   updateOrganization as updateOrgService,
   getOrganizationMembers,
@@ -31,6 +32,31 @@ export async function listOrganizations(_req: Request, res: Response) {
   } catch (error) {
     console.error("listOrganizations error:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+/**
+ * GET /api/organizations/all-with-members
+ * Platform Admin view: lists all organizations along with their members
+ */
+export async function listAllOrganizationsWithMembers(_req: Request, res: Response) {
+  try {
+    const isPlatformAdmin = Boolean(res.locals.user?.isPlatformAdmin);
+    if (!isPlatformAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Platform administrator privileges required",
+      });
+    }
+
+    const data = await getAllOrganizationsWithMembers();
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error("listAllOrganizationsWithMembers error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
   }
 }
 

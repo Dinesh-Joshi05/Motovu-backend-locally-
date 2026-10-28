@@ -18,6 +18,42 @@ export async function getAllOrganizations() {
   return result.rows;
 }
 
+// Get all organizations along with their members (for Platform Admin workspace)
+export async function getAllOrganizationsWithMembers() {
+  const orgsResult = await pool.query(
+    "SELECT id, name, status, created_at FROM app.organizations ORDER BY created_at DESC"
+  );
+
+  const membersResult = await pool.query(
+    `SELECT
+       m.id,
+       m.org_id,
+       m.user_id,
+       m.role,
+       m.status,
+       m.created_at,
+       u.name,
+       u.email
+     FROM app.memberships m
+     JOIN public."user" u ON u.id = m.user_id
+     ORDER BY m.created_at ASC`
+  );
+
+  const membersByOrgId: Record<string, any[]> = {};
+  for (const m of membersResult.rows) {
+    if (!membersByOrgId[m.org_id]) {
+      membersByOrgId[m.org_id] = [];
+    }
+    membersByOrgId[m.org_id].push(m);
+  }
+
+  return orgsResult.rows.map((org) => ({
+    ...org,
+    members: membersByOrgId[org.id] || [],
+    members_count: (membersByOrgId[org.id] || []).length,
+  }));
+}
+
 // Create new organization and submit a pending org_admin role request
 export async function createOrganization(name: string, ownerUserId: string) {
   const client = await pool.connect();

@@ -5,6 +5,7 @@ import {
   getObjectFromMinIO,
   buildTenantObjectKey,
 } from "../config/minio.js";
+import sharp from "sharp";
 import crypto from "crypto";
 import type { Readable } from "stream";
 
@@ -47,6 +48,65 @@ export interface ConversationInfo {
   name: string;
   created_at: string;
   members_count: number;
+}
+
+/**
+ * Compresses an image buffer using sharp before uploading to MinIO.
+ * - Resizes images larger than 1920px (maintains aspect ratio).
+ * - Applies 80% compression to drastically save storage and bandwidth while
+ *   keeping images sharp and visually clear.
+ */
+export async function compressImageBuffer(
+  inputBuffer: Buffer,
+  contentType: string
+): Promise<{ buffer: Buffer; contentType: string; sizeBytes: number }> {
+  try {
+    if (contentType === "image/svg+xml") {
+      return { buffer: inputBuffer, contentType, sizeBytes: inputBuffer.length };
+    }
+
+    const image = sharp(inputBuffer, { animated: contentType === "image/gif" });
+    const metadata = await image.metadata();
+
+    let pipeline = image;
+
+    // Resize if width or height exceeds 1920px
+    if (metadata.width && metadata.height && (metadata.width > 1920 || metadata.height > 1920)) {
+      pipeline = pipeline.resize({
+        width: metadata.width > metadata.height ? 1920 : undefined,
+        height: metadata.height >= metadata.width ? 1920 : undefined,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+    }
+
+    if (contentType === "image/png") {
+      const compressed = await pipeline.png({ quality: 80, compressionLevel: 8 }).toBuffer();
+      if (compressed.length < inputBuffer.length) {
+        return { buffer: compressed, contentType: "image/png", sizeBytes: compressed.length };
+      }
+    } else if (contentType === "image/jpeg" || contentType === "image/jpg") {
+      const compressed = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+      if (compressed.length < inputBuffer.length) {
+        return { buffer: compressed, contentType: "image/jpeg", sizeBytes: compressed.length };
+      }
+    } else if (contentType === "image/webp") {
+      const compressed = await pipeline.webp({ quality: 80 }).toBuffer();
+      if (compressed.length < inputBuffer.length) {
+        return { buffer: compressed, contentType: "image/webp", sizeBytes: compressed.length };
+      }
+    } else {
+      const compressed = await pipeline.webp({ quality: 80 }).toBuffer();
+      if (compressed.length < inputBuffer.length) {
+        return { buffer: compressed, contentType: "image/webp", sizeBytes: compressed.length };
+      }
+    }
+
+    return { buffer: inputBuffer, contentType, sizeBytes: inputBuffer.length };
+  } catch (err: any) {
+    console.warn("[Sharp] Compression warning, keeping original image:", err.message);
+    return { buffer: inputBuffer, contentType, sizeBytes: inputBuffer.length };
+  }
 }
 
 /**
@@ -224,7 +284,7 @@ export async function getConversationMessages(
 
 /**
  * Sends a message to the organization's company chat, optionally containing
- * media files stored in MinIO and recorded in app.message_attachments.
+ * media files compressed with Sharp, stored in MinIO, and recorded in app.message_attachments.
  * 
  * Supports:
  * - Text-only messages
@@ -300,10 +360,13 @@ export async function sendChatMessage(
 
     const msg = msgResult.rows[0];
 
-    // 5. If attachments are provided, upload to MinIO and insert metadata into app.message_attachments
+    // 5. If attachments are provided, compress with sharp, upload to MinIO, and insert metadata
     const savedAttachments: MessageAttachment[] = [];
     if (hasAttachments && attachments) {
       for (const att of attachments) {
+        // Compress image using Sharp before sending to MinIO
+        const compressed = await compressImageBuffer(att.buffer, att.contentType);
+
         const attachmentId = crypto.randomUUID();
         const objectKey = buildTenantObjectKey(
           orgId,
@@ -312,11 +375,11 @@ export async function sendChatMessage(
           att.originalFilename
         );
 
-        // Upload to MinIO object storage
+        // Upload compressed buffer to MinIO object storage
         await uploadToMinIO({
           key: objectKey,
-          buffer: att.buffer,
-          contentType: att.contentType,
+          buffer: compressed.buffer,
+          contentType: compressed.contentType,
         });
 
         // Insert metadata into app.message_attachments
@@ -338,8 +401,8 @@ export async function sendChatMessage(
             messageId,
             objectKey,
             att.originalFilename,
-            att.contentType,
-            att.sizeBytes,
+            compressed.contentType,
+            compressed.sizeBytes,
           ]
         );
 
