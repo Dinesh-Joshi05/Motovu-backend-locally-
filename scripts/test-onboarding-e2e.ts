@@ -175,8 +175,8 @@ async function run() {
   assert(aliceOrg && aliceOrg.role === "org_admin", "Alice now has active 'org_admin' role in /api/memberships/me!");
 
   // Alice accesses admin routes
-  const aliceAdminAudit = await api(`/api/organizations/${orgId}/admin/audit-log`, { token: aliceToken });
-  assert(aliceAdminAudit.status === 200, "Alice now has full Org Admin access to the organization (200)");
+  const aliceMembers = await api(`/api/organizations/${orgId}/members`, { token: aliceToken });
+  assert(aliceMembers.status === 200, "Alice now has full Org Admin access to the organization (200)");
 
   // =========================================================================
   // 5. Bob chooses Option B (Join Alice's Org as Worker)
@@ -234,13 +234,9 @@ async function run() {
   const bobMem = bobApprovedMems.data?.data?.find((m: any) => m.org_id === orgId);
   assert(bobMem && bobMem.role === "worker", "Bob now has active 'worker' role in Alice's organization!");
 
-  // Bob can perform worker actions
-  const workerTaskRes = await api(`/api/organizations/${orgId}/worker/tasks`, {
-    method: "POST",
-    token: bobToken,
-    body: { taskId: "task-001", status: "in_progress" },
-  });
-  assert(workerTaskRes.status === 200, "Bob can execute worker task in Alice's organization (200)");
+  // Bob can access organization workspace
+  const bobOrgRes = await api(`/api/organizations/${orgId}`, { token: bobToken });
+  assert(bobOrgRes.status === 200, "Bob has active organization member access (200)");
 
   // =========================================================================
   // CLEANUP

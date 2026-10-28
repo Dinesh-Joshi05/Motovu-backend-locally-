@@ -1,7 +1,6 @@
 import { pool, withTenantContext } from "../config/db.js";
 import type { OrganizationRole, RoleRequestStatus } from "../types/rbac.js";
 
-// 1. Create a new role request (Used by Option A and Option B, runs with RLS context)
 export async function createRoleRequest(
   orgId: string,
   userId: string,
@@ -19,8 +18,6 @@ export async function createRoleRequest(
   });
 }
 
-// 2. Option B: List staff role requests for a specific organization (For Org Admin)
-// Staff roles: advisor, guard, worker, store_keeper (Excludes org_admin, runs with org RLS context)
 export async function listOrganizationRoleRequests(
   orgId: string,
   status?: RoleRequestStatus
@@ -58,8 +55,6 @@ export async function listOrganizationRoleRequests(
   });
 }
 
-// 3. Option A: List new organization requests (For Platform Admin only)
-// Only queries requested_role = 'org_admin' (runs with admin RLS context)
 export async function listAllRoleRequests(
   status?: RoleRequestStatus,
   adminUserId?: string
@@ -99,7 +94,6 @@ export async function listAllRoleRequests(
   });
 }
 
-// 4. Review a role request (Approve or Reject)
 export async function reviewRoleRequest(
   orgId: string,
   requestId: string,
@@ -111,7 +105,6 @@ export async function reviewRoleRequest(
   try {
     await client.query("BEGIN");
 
-    // Step A: Find the request
     const reqResult = await client.query(
       `SELECT id, user_id, org_id, requested_role, status
        FROM app.role_requests
@@ -130,12 +123,10 @@ export async function reviewRoleRequest(
       throw new Error(`Role request has already been ${roleReq.status}`);
     }
 
-    // Security check: Option A (org_admin) requires platform admin
     if (roleReq.requested_role === "org_admin" && !isPlatformAdmin) {
       throw new Error("Only platform administrators can approve organization admin requests");
     }
 
-    // Step B: Update request status
     const updateReq = await client.query(
       `UPDATE app.role_requests
        SET status = $1, reviewed_by = $2, reviewed_at = NOW()
@@ -144,7 +135,6 @@ export async function reviewRoleRequest(
       [action, reviewerId, requestId, orgId]
     );
 
-    // Step C: If approved, activate membership in app.memberships
     let membership = null;
     if (action === "approved") {
       const memResult = await client.query(
