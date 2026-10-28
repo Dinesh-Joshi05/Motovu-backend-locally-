@@ -8,22 +8,20 @@ const JWKS = createRemoteJWKSet(
   new URL("/api/auth/jwks", BETTER_AUTH_URL)
 );
 
-// Authenticates the request using Better Auth JWT
+// Authenticates the request using Better Auth JWT (from Header or query param)
 export async function authenticate(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
+  let token = "";
   const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({
-      success: false,
-      message: "Missing Bearer token",
-    });
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7).trim();
+  } else if (typeof req.query?.token === "string" && req.query.token.trim()) {
+    token = req.query.token.trim();
   }
 
-  const token = authHeader.slice(7).trim();
   if (!token) {
     return res.status(401).json({
       success: false,

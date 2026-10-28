@@ -2,7 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import type { Server as HTTPServer } from "http";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { pool } from "./config/db.js";
-import { sendChatMessage } from "./services/chat.service.js";
+import { sendChatMessage, type OutgoingAttachment } from "./services/chat.service.js";
 
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 
@@ -124,16 +124,45 @@ export function initSocketServer(httpServer: HTTPServer) {
       }
     });
 
-    // 3. Send Message over Socket.io
-    socket.on("send_message", async ({ orgId, content }, callback) => {
+    // 3. Send Message over Socket.io (Supports text and/or media attachments)
+    socket.on("send_message", async ({ orgId, content, media }, callback) => {
       try {
-        if (!orgId || !content?.trim()) {
-          if (callback) callback({ success: false, message: "Missing orgId or content" });
+        const rawContent = typeof content === "string" ? content.trim() : null;
+        let attachments: OutgoingAttachment[] | undefined;
+
+        if (Array.isArray(media) && media.length > 0) {
+          attachments = media.map((m: any) => {
+            const buf = Buffer.isBuffer(m.buffer)
+              ? m.buffer
+              : typeof m.buffer === "string"
+              ? Buffer.from(m.buffer, "base64")
+              : typeof m.base64 === "string"
+              ? Buffer.from(m.base64, "base64")
+              : Buffer.from(m.data || "");
+
+            return {
+              buffer: buf,
+              originalFilename: m.filename || m.originalFilename || "image.png",
+              contentType: m.contentType || "image/png",
+              sizeBytes: m.sizeBytes || buf.length,
+            };
+          });
+        }
+
+        const hasAttachments = Boolean(attachments && attachments.length > 0);
+
+        if (!orgId || (!rawContent && !hasAttachments)) {
+          if (callback) {
+            callback({
+              success: false,
+              message: "Missing orgId or message content/media",
+            });
+          }
           return;
         }
 
         // Save message using tenant context (respects RLS and membership verification)
-        const message = await sendChatMessage(orgId, user.id, content);
+        const message = await sendChatMessage(orgId, user.id, rawContent, attachments);
 
         const roomName = `org:${orgId}`;
         // Broadcast message to everyone in the organization room (including sender)
@@ -155,4 +184,3 @@ export function initSocketServer(httpServer: HTTPServer) {
 
   return io;
 }
-

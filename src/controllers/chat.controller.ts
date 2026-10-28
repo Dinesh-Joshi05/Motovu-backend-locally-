@@ -3,6 +3,8 @@ import {
   getOrganizationChat,
   getConversationMessages,
   sendChatMessage,
+  getAttachmentStream,
+  type OutgoingAttachment,
 } from "../services/chat.service.js";
 import { getIO } from "../socket.js";
 
@@ -31,7 +33,7 @@ export async function getChat(req: Request, res: Response) {
 
 /**
  * GET /api/organizations/:orgId/chat/messages
- * Returns the messages in this organization's company chat
+ * Returns the messages (with media attachments) in this organization's company chat
  */
 export async function getMessages(req: Request, res: Response) {
   try {
@@ -55,24 +57,45 @@ export async function getMessages(req: Request, res: Response) {
 
 /**
  * POST /api/organizations/:orgId/chat/messages
- * Sends a message in this organization's company chat
+ * Sends a message in this organization's company chat.
+ * Supports:
+ * - Text messages
+ * - Single or multiple image file attachments via multipart/form-data
+ * - Text caption + image attachments
  */
 export async function sendMessage(req: Request, res: Response) {
   try {
     const orgId = res.locals.orgId;
     const userId = res.locals.user.id;
-    const { content } = req.body;
 
-    if (!content || !content.trim()) {
+    const content = req.body?.content;
+
+    // Handle files parsed by multer (either array or single file)
+    const rawFiles: Express.Multer.File[] = Array.isArray(req.files)
+      ? (req.files as Express.Multer.File[])
+      : req.file
+      ? [req.file as Express.Multer.File]
+      : [];
+
+    const attachments: OutgoingAttachment[] = rawFiles.map((file) => ({
+      buffer: file.buffer,
+      originalFilename: file.originalname,
+      contentType: file.mimetype,
+      sizeBytes: file.size,
+    }));
+
+    const trimmedContent = typeof content === "string" ? content.trim() : "";
+
+    if (!trimmedContent && attachments.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Message content cannot be blank",
+        message: "Message must contain text content or an attachment",
       });
     }
 
-    const message = await sendChatMessage(orgId, userId, content);
+    const message = await sendChatMessage(orgId, userId, trimmedContent, attachments);
 
-    // Broadcast to Socket.IO organization room if initialized
+    // Real-time broadcast to all organization members in the Socket.IO room
     const io = getIO();
     if (io) {
       io.to(`org:${orgId}`).emit("new_message", message);
@@ -93,3 +116,33 @@ export async function sendMessage(req: Request, res: Response) {
   }
 }
 
+/**
+ * GET /api/organizations/:orgId/chat/attachments/:attachmentId
+ * Securely streams an attachment from MinIO.
+ * Enforces tenant isolation via PostgreSQL RLS and organization membership.
+ */
+export async function getAttachment(req: Request, res: Response) {
+  try {
+    const orgId = res.locals.orgId;
+    const userId = res.locals.user.id;
+    const attachmentId = String(req.params.attachmentId);
+
+    const { attachment, stream } = await getAttachmentStream(orgId, userId, attachmentId);
+
+    res.setHeader("Content-Type", attachment.content_type);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(attachment.original_filename)}"`
+    );
+    res.setHeader("Cache-Control", "private, max-age=86400");
+
+    stream.pipe(res);
+  } catch (error: any) {
+    console.error("getAttachment error:", error);
+    const isNotFound = error.message?.includes("not found");
+    return res.status(isNotFound ? 404 : 500).json({
+      success: false,
+      message: error.message || "Failed to load attachment",
+    });
+  }
+}

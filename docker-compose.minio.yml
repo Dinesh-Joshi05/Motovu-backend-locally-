@@ -1,0 +1,18 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: motovu-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: 6l2a4vdAZLUxUMT098XK
+      MINIO_ROOT_PASSWORD: mvHQQMXWouzOGm3gD2M4PA5EfcVaUFL7wx2lPJ0Q
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+volumes:
+  minio_data:
+
